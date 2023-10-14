@@ -84,11 +84,15 @@ bool initiateSystem(const std::string &filename) {
 }
 
 int main(int argC, char *argV[]) {
+    pthread_t threads[THREAD_COUNT];
     if (argC != 2)
         printf("Usage : %s <file name containing system configuration data>", argV[0]);
     else {
         if (initiateSystem(argV[1])) {
             std::cout << "Body   :     x              y           vx              vy   " << std::endl;
+            if(bodies.size() <= THREAD_COUNT){
+                for(int i = 0; i < bodies.size(); i++)
+            }
         }
         return 0;
     }
