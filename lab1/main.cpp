@@ -29,24 +29,6 @@ public:
         this->y = _y;
     }
 
-    void addVector(Point2D& vector){
-        this->x += vector.x;
-        this->y += vector.y;
-    }
-
-    void subtractVector(Point2D& vector){
-        this->x -= vector.x;
-        this->y -= vector.y;
-    }
-
-    void scaleVector(double constant){
-        this->x *= constant;
-        this->y *= constant;
-    }
-
-    double mod(Point2D& vector){
-        return sqrt(this->x * vector.x + this->y * vector.y);
-    }
 
     void copyRevers(Point2D point) {
         this->x = point.x * -1;
@@ -71,21 +53,27 @@ public:
     }
     
     void calculateForce(Body& body) {
-        double denominator = pow(mod(subtractVectors(this->point, body.point)), 3);
+        double denominator = pow(Point2D::mod(Point2D::subtractVectors(getPoint(), body.getPoint())), 3);
         
         if (denominator < E) {
             denominator = E;
         }
         
-        this->force = addVectors(this->force, scaleVector(GravConstant * body.m / denominator, subtractVectors(body.point, this->point)));
+        forces[body.number] = Point2D::addVectors(forces[this->number], Point2D::scaleVector(GravConstant * body.m / denominator, Point2D::subtractVectors(body.getPoint(), getPoint())));
+    }
+    
+    void calculateForceSum() {
+        for (int i = 0; i < bodiesCount; i++) {
+            this->force = Point2D::addVectors(this->force, this->forces[i]);
+        }
     }
     
     void calculatePosition() {
-        this->point = addVectors(this->point, scaleVector(DT, this->speed));
+        this->point = Point2D::addVectors(getPoint(), Point2D::scaleVector(DT, this->speed));
     }
     
     void calculateSpeed() {
-        this->speed = addVectors(this->speed, scaleVector(DT, this->force));
+        this->speed = Point2D::addVectors(this->speed, Point2D::scaleVector(DT, this->force));
     }
 
     Point2D getPoint() {
@@ -96,6 +84,7 @@ public:
     Point2D getForce(int index){
         return forces[index];
     }
+
 
     void copyForce(Body body) {
         this->forces[body.number].copyRevers(body.getForce(this->number));
