@@ -29,30 +29,67 @@ public:
     }
 };
 
+Point2D addVectors(Point2D vector1, Point2D vector2) {
+    Point2D resultVector = {vector1.x + vector2.x, vector1.y + vector2.y};
+    return resultVector;
+}
+        
+Point2D subtractVectors(Point2D vector1, Point2D vector2) {
+    Point2D resultVector = {vector1.x - vector2.x, vector1.y - vector2.y};
+    return resultVector;
+}
+        
+Point2D scaleVector(double constant, Point2D vector) {
+    Point2D resultVector = {vector.x * constant, vector.y * constant};
+    return resultVector;
+}
+        
+double mod(Point2D vector) {
+    return sqrt(vector.x * vector.x + vector.y * vector.y);
+}
+
 class Body {
 public:
     Point2D point;
+    Point2D force;
+    Point2D speed;
     double m;
     int step = 0;
     int number;
-    std::vector<double> forces;
-    Point2D speed;
-
     Body(double x, double y, double Vx, double Vy, double m, int number) {
         this->point = Point2D(x, y);
         this->speed = Point2D(Vx, Vy);
         this->m = m;
         this->number = number;
-        this->forces.resize(bodiesCount);
+        this->force = Point2D(0,0);
         pthread_rwlock_init(&rwlock, nullptr);
     }
-
-    ~Body() {
+    
+    ~Body(){
         pthread_rwlock_destroy(&rwlock);
     }
-
+    
+    
+    void calculateForce(Body body) {
+        double denominator = pow(mod(subtractVectors(this->point, body.point)), 3);
+        
+        if (denominator < E) {
+            denominator = E;
+        }
+        
+        this->force = addVectors(this->force, scaleVector(GravConstant * body.m / denominator, subtractVectors(body.point, this->point)));
+    }
+    
+    void calculatePosition() {
+        this->point = addVectors(this->point, scaleVector(DT, this->speed));
+    }
+    
+    void calculateSpeed() {
+        this->speed = addVectors(this->speed, scaleVector(DT, this->force));
+    }
+    
 private:
-    pthread_rwlock_t rwlock{};
+    pthread_rwlock_t rwlock;
 };
 
 std::vector<Body> bodies;
