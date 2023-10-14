@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cmath>
 #include <pthread.h>
+#include <unistd.h>
 
 #define DT 0.05
 #define E 1e-4
@@ -65,7 +66,7 @@ public:
 
     void calculateForce(Body &body) {
         pthread_rwlock_wrlock(&rwlock);
-        double denominator = pow(Point2D::mod(Point2D::subtractVectors(getPoint(), body.getPoint())), 3);
+        double denominator = pow(Point2D::mod(Point2D::subtractVectors(this->getPoint(), body.getPoint())), 3);
 
         if (denominator < E) {
             denominator = E;
@@ -74,7 +75,7 @@ public:
         forces[body.number] = Point2D::addVectors(forces[this->number],
                                                   Point2D::scaleVector(GravConstant * body.m / denominator,
                                                                        Point2D::subtractVectors(body.getPoint(),
-                                                                                                getPoint())));
+                                                                                                this->getPoint())));
         forces[body.number].used = true;
         pthread_rwlock_unlock(&rwlock);
     }
@@ -84,15 +85,15 @@ public:
         for (int i = 0; i < bodiesCount; i++) {
             this->force = Point2D::addVectors(this->force, this->forces[i]);
         }
-        for (Point2D& point: this->forces) {
-            point.used = false;
+        for (Point2D point2d: this->forces) {
+            point2d.used = false;
         }
         this->forces.resize(bodiesCount);
         pthread_rwlock_unlock(&rwlock);
     }
 
     void calculatePosition() {
-        this->point = Point2D::addVectors(getPoint(), Point2D::scaleVector(DT, this->speed));
+        this->point = Point2D::addVectors(this->point, Point2D::scaleVector(DT, this->speed));
     }
 
     void calculateSpeed() {
@@ -195,6 +196,9 @@ void *ThreadFunction(void *arg) {
     int start = data->start;
     int end = data->end;
     int thread_num = data->thread_num;
+    if(thread_num == 0){
+        usleep(1000);
+    }
     std::cout << "Thread " << thread_num << " started" << std::endl;
 
     for (int i = start; i < end; i++) {
