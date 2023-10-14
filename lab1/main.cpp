@@ -28,23 +28,20 @@ public:
         this->y = _y;
     }
 
-    void addVector(Point2D& vector){
-        this->x += vector.x;
-        this->y += vector.y;
+    static Point2D addVectors(Point2D vector1, Point2D vector2){
+        return Point2D(vector1.x + vector2.x, vector1.y + vector2.y);
     }
 
-    void subtractVector(Point2D& vector){
-        this->x -= vector.x;
-        this->y -= vector.y;
+    static Point2D subtractVectors(Point2D vector1, Point2D vector2){
+        return Point2D(vector1.x - vector2.x, vector1.y - vector2.y);
     }
 
-    void scaleVector(double constant){
-        this->x *= constant;
-        this->y *= constant;
+    static Point2D scaleVector(double constant, Point2D vector){
+        return Point2D(vector.x * constant, vector.y * constant);
     }
 
-    double mod(Point2D& vector){
-        return sqrt(this->x * vector.x + this->y * vector.y);
+    static double mod(Point2D vector){
+        return sqrt(vector.x * vector.x + vector.y * vector.y);
     }
 };
 
@@ -68,21 +65,27 @@ public:
     }
     
     void calculateForce(Body& body) {
-        double denominator = pow(mod(subtractVectors(this->point, body.point)), 3);
+        double denominator = pow(Point2D::mod(Point2D::subtractVectors(getPoint(), body.getPoint())), 3);
         
         if (denominator < E) {
             denominator = E;
         }
         
-        this->force = addVectors(this->force, scaleVector(GravConstant * body.m / denominator, subtractVectors(body.point, this->point)));
+        forces[body.number] = Point2D::addVectors(forces[this->number], Point2D::scaleVector(GravConstant * body.m / denominator, Point2D::subtractVectors(body.getPoint(), getPoint())));
+    }
+    
+    void calculateForceSum() {
+        for (int i = 0; i < bodiesCount; i++) {
+            this->force = Point2D::addVectors(this->force, this->forces[i]);
+        }
     }
     
     void calculatePosition() {
-        this->point = addVectors(this->point, scaleVector(DT, this->speed));
+        this->point = Point2D::addVectors(getPoint(), Point2D::scaleVector(DT, this->speed));
     }
     
     void calculateSpeed() {
-        this->speed = addVectors(this->speed, scaleVector(DT, this->force));
+        this->speed = Point2D::addVectors(this->speed, Point2D::scaleVector(DT, this->force));
     }
 
     Point2D getPoint(){
@@ -91,12 +94,6 @@ public:
 
     Point2D getForce(int index){
         return forces[index];
-    }
-
-    void writeForce(Body body, int index){
-        //тут функция подсчёта как переданная точка действует на точку метод которой вызван и сохраняет в массив с forces[index]
-        //по сути колкулейт форсес можешь сюда вствить, а сам метод удалить и добавить потом саммари метод который по массиву сил проходит и суммирует
-        //ну и точка берётся только через метод гет поинт чтобы эффекта гонки не было
     }
 
     ~Body(){
