@@ -27,32 +27,33 @@ public:
         this->x = _x;
         this->y = _y;
     }
-};
 
-Point2D addVectors(Point2D vector1, Point2D vector2) {
-    Point2D resultVector = {vector1.x + vector2.x, vector1.y + vector2.y};
-    return resultVector;
-}
-        
-Point2D subtractVectors(Point2D vector1, Point2D vector2) {
-    Point2D resultVector = {vector1.x - vector2.x, vector1.y - vector2.y};
-    return resultVector;
-}
-        
-Point2D scaleVector(double constant, Point2D vector) {
-    Point2D resultVector = {vector.x * constant, vector.y * constant};
-    return resultVector;
-}
-        
-double mod(Point2D vector) {
-    return sqrt(vector.x * vector.x + vector.y * vector.y);
-}
+    void addVector(Point2D& vector){
+        this->x += vector.x;
+        this->y += vector.y;
+    }
+
+    void subtractVector(Point2D& vector){
+        this->x -= vector.x;
+        this->y -= vector.y;
+    }
+
+    void scaleVector(double constant){
+        this->x *= constant;
+        this->y *= constant;
+    }
+
+    double mod(Point2D& vector){
+        return sqrt(this->x * vector.x + this->y * vector.y);
+    }
+};
 
 class Body {
 public:
     Point2D point;
     Point2D force;
     Point2D speed;
+    std::vector<Point2D> forces;
     double m;
     int step = 0;
     int number;
@@ -61,16 +62,12 @@ public:
         this->speed = Point2D(Vx, Vy);
         this->m = m;
         this->number = number;
-        this->force = Point2D(0,0);
+        forces.resize(bodiesCount);
+
         pthread_rwlock_init(&rwlock, nullptr);
     }
     
-    ~Body(){
-        pthread_rwlock_destroy(&rwlock);
-    }
-    
-    
-    void calculateForce(Body body) {
+    void calculateForce(Body& body) {
         double denominator = pow(mod(subtractVectors(this->point, body.point)), 3);
         
         if (denominator < E) {
@@ -87,7 +84,25 @@ public:
     void calculateSpeed() {
         this->speed = addVectors(this->speed, scaleVector(DT, this->force));
     }
-    
+
+    Point2D getPoint(){
+        return this->point;
+    }
+
+    Point2D getForce(int index){
+        return forces[index];
+    }
+
+    void writeForce(Body body, int index){
+        //тут функция подсчёта как переданная точка действует на точку метод которой вызван и сохраняет в массив с forces[index]
+        //по сути колкулейт форсес можешь сюда вствить, а сам метод удалить и добавить потом саммари метод который по массиву сил проходит и суммирует
+        //ну и точка берётся только через метод гет поинт чтобы эффекта гонки не было
+    }
+
+    ~Body(){
+        pthread_rwlock_destroy(&rwlock);
+    }
+
 private:
     pthread_rwlock_t rwlock;
 };
