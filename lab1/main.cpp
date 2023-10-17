@@ -18,34 +18,52 @@ class Point2D {
 public:
     double x;
     double y;
-    bool used;
+    bool isNotNull;
 
-    Point2D() : x(0), y(0), used(false) {}
+    Point2D() : x(0), y(0), isNotNull(false) {}
 
-    Point2D(double _x, double _y) : x(_x), y(_y), used(false) {}
+    Point2D(double _x, double _y) : x(_x), y(_y), isNotNull(false) {}
 
     static Point2D addVectors(Point2D vector1, Point2D vector2) {
-        return Point2D(vector1.x + vector2.x, vector1.y + vector2.y);
+        pthread_mutex_lock(&mutex);
+        Point2D point2D = Point2D(vector1.x + vector2.x, vector1.y + vector2.y);
+        pthread_mutex_unlock(&mutex);
+        return point2D;
     }
 
     static Point2D subtractVectors(Point2D vector1, Point2D vector2) {
-        return Point2D(vector1.x - vector2.x, vector1.y - vector2.y);
+        pthread_mutex_lock(&mutex);
+        Point2D point2D = Point2D(vector1.x - vector2.x, vector1.y - vector2.y);
+        pthread_mutex_unlock(&mutex);
+        return point2D;
     }
 
     static Point2D scaleVector(double constant, Point2D vector) {
-        return Point2D(vector.x * constant, vector.y * constant);
+        pthread_mutex_lock(&mutex);
+        Point2D point2D = Point2D(vector.x * constant, vector.y * constant);
+        pthread_mutex_unlock(&mutex);
+        return point2D;
     }
 
     static double mod(Point2D vector) {
-        return sqrt(vector.x * vector.x + vector.y * vector.y);
+        pthread_mutex_lock(&mutex);
+        double temp = sqrt(vector.x * vector.x + vector.y * vector.y);
+        pthread_mutex_unlock(&mutex);
+        return temp;
     }
 
     void copyRevers(Point2D point) {
+        pthread_mutex_lock(&mutex);
         this->x = point.x * -1;
         this->y = point.y * -1;
+        pthread_mutex_unlock(&mutex);
     }
 
+private:
+    static pthread_mutex_t mutex;
 };
+
+pthread_mutex_t Point2D::mutex = PTHREAD_MUTEX_INITIALIZER;
 
 class Body {
 public:
@@ -66,7 +84,9 @@ public:
 
     void calculateForce(Body &body) {
         pthread_rwlock_wrlock(&rwlock);
-        double denominator = pow(Point2D::mod(Point2D::subtractVectors(this->getPoint(), body.getPoint())), 3);
+        Point2D firstPoint = this->getPoint();
+        Point2D secondPoint = body.getPoint();
+        double denominator = pow(Point2D::mod(Point2D::subtractVectors(firstPoint, secondPoint)), 3);
 
         if (denominator < E) {
             denominator = E;
@@ -74,9 +94,9 @@ public:
 
         forces[body.number] = Point2D::addVectors(forces[this->number],
                                                   Point2D::scaleVector(GravConstant * body.m / denominator,
-                                                                       Point2D::subtractVectors(body.getPoint(),
-                                                                                                this->getPoint())));
-        forces[body.number].used = true;
+                                                                       Point2D::subtractVectors(secondPoint,
+                                                                                                firstPoint)));
+        forces[body.number].isNotNull = true;
         pthread_rwlock_unlock(&rwlock);
     }
 
@@ -84,29 +104,36 @@ public:
         pthread_rwlock_wrlock(&rwlock);
         for (int i = 0; i < bodiesCount; i++) {
             this->force = Point2D::addVectors(this->force, this->forces[i]);
+            this->forces[i].isNotNull = false;
         }
-        for (Point2D point2d: this->forces) {
-            point2d.used = false;
-        }
-        this->forces.resize(bodiesCount);
         pthread_rwlock_unlock(&rwlock);
     }
 
     void calculatePosition() {
+        pthread_rwlock_wrlock(&rwlock);
         this->point = Point2D::addVectors(this->point, Point2D::scaleVector(DT, this->speed));
+        pthread_rwlock_unlock(&rwlock);
     }
 
     void calculateSpeed() {
+        pthread_rwlock_wrlock(&rwlock);
         this->speed = Point2D::addVectors(this->speed, Point2D::scaleVector(DT, this->force));
+        pthread_rwlock_unlock(&rwlock);
     }
 
     Point2D getPoint() {
-        return this->point;
+        std::cout << "thread " << this->number << " read point " << std::endl;
+        Point2D point2D = this->point;
+        std::cout << "thread " << this->number << " stop reading point " << std::endl;
+        return point2D;
     }
 
 
     Point2D getForce(int index) {
-        return forces[index];
+        pthread_rwlock_rdlock(&rwlock);
+        Point2D point2D = forces[index];
+        pthread_rwlock_unlock(&rwlock);
+        return point2D;
     }
 
 
@@ -118,7 +145,7 @@ public:
 
     bool isNotNullForce(int index) {
         pthread_rwlock_rdlock(&rwlock);
-        if (forces[index].used) {
+        if (forces[index].isNotNull) {
             pthread_rwlock_unlock(&rwlock);
             return true;
         }
@@ -145,8 +172,9 @@ public:
 
     int getStep() {
         pthread_rwlock_rdlock(&rwlock);
+        int temp = this->step;
         pthread_rwlock_unlock(&rwlock);
-        return this->step;
+        return temp;
     }
 
     ~Body() {
@@ -196,9 +224,9 @@ void *ThreadFunction(void *arg) {
     int start = data->start;
     int end = data->end;
     int thread_num = data->thread_num;
-    if(thread_num == 0){
-        usleep(1000);
-    }
+//    if(thread_num == 0){
+//        usleep(1000);
+//    }
     std::cout << "Thread " << thread_num << " started" << std::endl;
 
     for (int i = start; i < end; i++) {
@@ -209,7 +237,6 @@ void *ThreadFunction(void *arg) {
                           << std::endl;
                 continue;
             }
-
             if (body.isNotNullForce(partBody.number)) {
                 std::cout << "Thread " << thread_num << " : copy force from " << body.number << " to "
                           << partBody.number << std::endl;
@@ -250,6 +277,7 @@ int main(int argC, char *argV[]) {
     else {
         if (initiateSystem(argV[1])) {
 
+            pthread_t threads[THREAD_COUNT];
 
             int num_threads_to_create = (bodiesCount < THREAD_COUNT) ? bodiesCount : THREAD_COUNT;
             int bodies_per_tread = bodiesCount / num_threads_to_create;
@@ -271,7 +299,6 @@ int main(int argC, char *argV[]) {
             }
 
             for (int i = 0; i < timeSteps; i++) {
-                pthread_t threads[THREAD_COUNT];
 
                 for (int j = 0; j < num_threads_to_create; j++) {
                     pthread_create(&threads[j], nullptr, ThreadFunction, &thread_data[j]);
@@ -286,6 +313,12 @@ int main(int argC, char *argV[]) {
                 for (Body &body: bodies) {
                     std::cout << "Body " << body.number << " : " << body.point.x << "\t" << body.point.y << "\t"
                               << body.speed.x << "\t" << body.speed.y << std::endl;
+                }
+                for (Body &body: bodies){
+                    std::cout << body.number << std::endl;
+                    for(Point2D point: body.forces){
+                        std::cout << point.x << " " << point.y << " " << point.isNotNull << std::endl;
+                    }
                 }
                 curStep++;
             }
