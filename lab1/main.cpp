@@ -14,6 +14,17 @@ pthread_barrier_t barrier;
 int bodiesCount, timeSteps, curStep = 1;
 double GravConstant;
 
+class PointForPrint {
+public:
+    double x;
+    double y;
+    double Vx;
+    double Vy;
+    PointForPrint(double _x, double _y, double _Vx, double _Vy) : x(_x), y(_y), Vx(_Vx), Vy(_Vy) {}
+};
+
+std::vector<std::vector<PointForPrint>> cycleVector;
+
 class Point2D {
 public:
     double x;
@@ -203,6 +214,7 @@ bool initiateSystem(const std::string &filename) {
     }
 
     inputFile >> GravConstant >> bodiesCount >> timeSteps;
+    cycleVector.resize(bodiesCount);
     for (int i = 0; i < bodiesCount; i++) {
         inputFile >> m;
         inputFile >> x >> y;
@@ -224,9 +236,6 @@ void *ThreadFunction(void *arg) {
     int start = data->start;
     int end = data->end;
     int thread_num = data->thread_num;
-//    if(thread_num == 0){
-//        usleep(1000);
-//    }
     std::cout << "Thread " << thread_num << " started" << std::endl;
 
     for (int j = 0; j < timeSteps; j++) {
@@ -249,23 +258,17 @@ void *ThreadFunction(void *arg) {
                 }
             }
         }
+        std::cout << thread_num << " waiting forces" << std::endl;
+        pthread_barrier_wait(&barrier);
         for (int i = start; i < end; i++) {
             Body &partBody = bodies[i];
-            while (!partBody.isAllForcesCalculated()) {
-                continue;
-            }
             partBody.calculateForceSum();
             partBody.calculatePosition();
             partBody.calculateSpeed();
             partBody.plusStep();
+            cycleVector[i].emplace_back(partBody.point.x, partBody.point.y, partBody.speed.x, partBody.speed.y);
         }
-        pthread_barrier_wait(&barrier);
-        std::cout << "Cycle " << bodies[start].step << std::endl;
-        for (int i = start; i < end; i++) {
-            Body &partBody = bodies[i];
-            std::cout << "Body " << partBody.number << " : " << partBody.point.x << "\t" << partBody.point.y << "\t"
-                      << partBody.speed.x << "\t" << partBody.speed.y << std::endl;
-        }
+        std::cout << thread_num << " waiting calculate other" << std::endl;
         pthread_barrier_wait(&barrier);
     }
     return NULL;
@@ -278,6 +281,24 @@ bool checkStep() {
         }
     }
     return true;
+}
+
+void writeOutput(){
+    std::ofstream outputFile("output.txt", std::ios::out);
+    if (outputFile.is_open()) {
+        for(int i = 0; i < timeSteps; i++){
+            outputFile << "Cycle " << i + 1 << std::endl;
+            for(int j = 0; j < bodiesCount; j++){
+                outputFile << "Body " << j << " : " << cycleVector[j][i].x << "\t" << cycleVector[j][i].y << "\t"
+                          << cycleVector[j][i].Vx << "\t" << cycleVector[j][i].Vy << std::endl;
+            }
+        }
+        outputFile.close();
+
+        std::cout << "Created output" << std::endl;
+    } else {
+        std::cerr << "Error while writing output" << std::endl;
+    }
 }
 
 int main(int argC, char *argV[]) {
@@ -317,8 +338,10 @@ int main(int argC, char *argV[]) {
             for (int j = 0; j < num_threads_to_create; j++) {
                 pthread_join(threads[j], nullptr);
             }
+
+            writeOutput();
+            pthread_barrier_destroy(&barrier);
         }
-        pthread_barrier_destroy(&barrier);
         return 0;
     }
 }
