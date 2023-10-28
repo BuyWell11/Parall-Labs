@@ -5,12 +5,12 @@
 #include <cstdio>
 #include <cmath>
 #include <pthread.h>
-#include <unistd.h>
 
 #define DT 0.05
 #define E 1e-4
 #define THREAD_COUNT 8
 
+pthread_barrier_t barrier;
 int bodiesCount, timeSteps, curStep = 1;
 double GravConstant;
 
@@ -229,34 +229,44 @@ void *ThreadFunction(void *arg) {
 //    }
     std::cout << "Thread " << thread_num << " started" << std::endl;
 
-    for (int i = start; i < end; i++) {
-        Body &partBody = bodies[i];
-        for (Body &body: bodies) {
-            if (partBody.number == body.number) {
-                std::cout << "Thread " << thread_num << " : same body " << partBody.number << " and " << body.number
-                          << std::endl;
+    for (int j = 0; j < timeSteps; j++) {
+        for (int i = start; i < end; i++) {
+            Body &partBody = bodies[i];
+            for (Body &body: bodies) {
+                if (partBody.number == body.number) {
+                    std::cout << "Thread " << thread_num << " : same body " << partBody.number << " and " << body.number
+                              << std::endl;
+                    continue;
+                }
+                if (body.isNotNullForce(partBody.number)) {
+                    std::cout << "Thread " << thread_num << " : copy force from " << body.number << " to "
+                              << partBody.number << std::endl;
+                    partBody.copyForceRevers(body);
+                } else {
+                    std::cout << "Thread " << thread_num << " : calculate force for " << partBody.number << " from "
+                              << body.number << std::endl;
+                    partBody.calculateForce(body);
+                }
+            }
+        }
+        for (int i = start; i < end; i++) {
+            Body &partBody = bodies[i];
+            while (!partBody.isAllForcesCalculated()) {
                 continue;
             }
-            if (body.isNotNullForce(partBody.number)) {
-                std::cout << "Thread " << thread_num << " : copy force from " << body.number << " to "
-                          << partBody.number << std::endl;
-                partBody.copyForceRevers(body);
-            } else {
-                std::cout << "Thread " << thread_num << " : calculate force for " << partBody.number << " from "
-                          << body.number << std::endl;
-                partBody.calculateForce(body);
-            }
+            partBody.calculateForceSum();
+            partBody.calculatePosition();
+            partBody.calculateSpeed();
+            partBody.plusStep();
         }
-    }
-    for (int i = start; i < end; i++) {
-        Body &partBody = bodies[i];
-        while (!partBody.isAllForcesCalculated()) {
-            continue;
+        pthread_barrier_wait(&barrier);
+        std::cout << "Cycle " << bodies[start].step << std::endl;
+        for (int i = start; i < end; i++) {
+            Body &partBody = bodies[i];
+            std::cout << "Body " << partBody.number << " : " << partBody.point.x << "\t" << partBody.point.y << "\t"
+                      << partBody.speed.x << "\t" << partBody.speed.y << std::endl;
         }
-        partBody.calculateForceSum();
-        partBody.calculatePosition();
-        partBody.calculateSpeed();
-        partBody.plusStep();
+        pthread_barrier_wait(&barrier);
     }
     return NULL;
 }
@@ -298,31 +308,17 @@ int main(int argC, char *argV[]) {
                 start_index = end_index;
             }
 
-            for (int i = 0; i < timeSteps; i++) {
+            pthread_barrier_init(&barrier, NULL, num_threads_to_create);
 
-                for (int j = 0; j < num_threads_to_create; j++) {
-                    pthread_create(&threads[j], nullptr, ThreadFunction, &thread_data[j]);
-                }
+            for (int j = 0; j < num_threads_to_create; j++) {
+                pthread_create(&threads[j], nullptr, ThreadFunction, &thread_data[j]);
+            }
 
-                for (int j = 0; j < num_threads_to_create; j++) {
-                    pthread_join(threads[j], nullptr);
-                }
-                while (!checkStep()) {
-                }
-                std::cout << "Cycle " << curStep << std::endl;
-                for (Body &body: bodies) {
-                    std::cout << "Body " << body.number << " : " << body.point.x << "\t" << body.point.y << "\t"
-                              << body.speed.x << "\t" << body.speed.y << std::endl;
-                }
-                for (Body &body: bodies){
-                    std::cout << body.number << std::endl;
-                    for(Point2D point: body.forces){
-                        std::cout << point.x << " " << point.y << " " << point.isNotNull << std::endl;
-                    }
-                }
-                curStep++;
+            for (int j = 0; j < num_threads_to_create; j++) {
+                pthread_join(threads[j], nullptr);
             }
         }
+        pthread_barrier_destroy(&barrier);
         return 0;
     }
 }
