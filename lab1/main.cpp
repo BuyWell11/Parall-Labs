@@ -4,8 +4,8 @@
 #include <fstream>
 #include <cstdio>
 #include <cmath>
-#include <time.h>
 #include <pthread.h>
+#include "timer.h"
 
 #define DT 0.05
 #define E 1e-4
@@ -331,14 +331,12 @@ void writeOutput() {
 }
 
 int main(int argC, char *argV[]) {
-    clock_t start, end;
-    double time_used;
+    double start, end;
 
     if (argC != 2)
         printf("Usage : %s <file name containing system configuration data>", argV[0]);
     else {
         if (initiateSystem(argV[1])) {
-
             pthread_t threads[THREAD_COUNT];
 
             int num_threads_to_create = (bodiesCount < THREAD_COUNT) ? bodiesCount : THREAD_COUNT;
@@ -362,7 +360,8 @@ int main(int argC, char *argV[]) {
 
             pthread_barrier_init(&barrier, NULL, num_threads_to_create);
 
-            start = clock();
+            GET_TIME(start);
+
             for (int j = 0; j < num_threads_to_create; j++) {
                 pthread_create(&threads[j], nullptr, ThreadFunction, &thread_data[j]);
             }
@@ -370,10 +369,10 @@ int main(int argC, char *argV[]) {
             for (int j = 0; j < num_threads_to_create; j++) {
                 pthread_join(threads[j], nullptr);
             }
-            end = clock();
 
-            time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-            std::cout << "Time spent: " << time_used << " sec" << std::endl;
+            GET_TIME(end);
+
+            std::cout << "Time spent: " << end - start << " sec" << std::endl;
             writeOutput();
             pthread_barrier_destroy(&barrier);
         }
