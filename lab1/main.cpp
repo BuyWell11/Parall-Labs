@@ -11,7 +11,9 @@
 #define E 1e-4
 #define THREAD_COUNT 8
 
-pthread_barrier_t barrier;
+pthread_barrier_t barrier_forces;
+pthread_barrier_t barrier_calculate;
+pthread_barrier_t barrier_thread;
 int bodiesCount, timeSteps;
 double GravConstant;
 
@@ -96,6 +98,8 @@ public:
                                                   Point2D::scaleVector(GravConstant * body.m / denominator,
                                                                        Point2D::subtractVectors(secondPoint,
                                                                                                 firstPoint)));
+
+        body.forces[this->number].copyRevers(forces[body.number]);
         forces[body.number].isNotNull = true;
     }
 
@@ -188,15 +192,13 @@ void *ThreadFunction(void *arg) {
         for (int i = start; i < end; i++) {
             Body &partBody = bodies[i];
             for (Body &body: bodies) {
-                if (partBody.number < body.number && body.isNotNullForce(partBody.number)) {
-                    partBody.copyForceRevers(body);
-                } else {
+                if (partBody.number < body.number) {
                     partBody.calculateForce(body);
                 }
             }
         }
         std::cout << thread_num << " waiting forces" << std::endl;
-        pthread_barrier_wait(&barrier);
+        pthread_barrier_wait(&barrier_forces);
         for (int i = start; i < end; i++) {
             Body &partBody = bodies[i];
             partBody.calculateForceSum();
@@ -205,10 +207,10 @@ void *ThreadFunction(void *arg) {
             partBody.plusStep();
             cycleVector[i].emplace_back(partBody.point.x, partBody.point.y, partBody.speed.x, partBody.speed.y, partBody.force.x, partBody.force.y);
         }
-        std::cout << thread_num << " waiting calculate other" << std::endl;
-        std::cout << "cycle " << j << " end" << std::endl;
-        pthread_barrier_wait(&barrier);
+        pthread_barrier_wait(&barrier_calculate);
+        std::cout << thread_num  << " cycle " << j << " end" << std::endl;
     }
+    pthread_barrier_wait(&barrier_thread);
     return NULL;
 }
 
@@ -258,7 +260,10 @@ int main(int argC, char *argV[]) {
                 start_index = end_index;
             }
 
-            pthread_barrier_init(&barrier, NULL, num_threads_to_create);
+            pthread_barrier_init(&barrier_forces, NULL, num_threads_to_create);
+            pthread_barrier_init(&barrier_calculate, NULL, num_threads_to_create);
+            pthread_barrier_init(&barrier_thread, NULL, num_threads_to_create);
+
 
             GET_TIME(start);
 
@@ -274,7 +279,9 @@ int main(int argC, char *argV[]) {
 
             std::cout << "Time spent: " << end - start << " sec" << std::endl;
             writeOutput();
-            pthread_barrier_destroy(&barrier);
+            pthread_barrier_destroy(&barrier_calculate);
+            pthread_barrier_destroy(&barrier_forces);
+            pthread_barrier_destroy(&barrier_thread);
         }
         return 0;
     }
