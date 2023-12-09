@@ -24,10 +24,8 @@ public:
     double y;
     double Vx;
     double Vy;
-    double sumFX;
-    double sumFY;
 
-    PointForPrint(double _x, double _y, double _Vx, double _Vy, double _sumFX, double _sumFY) : x(_x), y(_y), Vx(_Vx), Vy(_Vy), sumFX(_sumFX), sumFY(_sumFY) {}
+    PointForPrint(double _x, double _y, double _Vx, double _Vy) : x(_x), y(_y), Vx(_Vx), Vy(_Vy) {}
 };
 
 std::vector<std::vector<PointForPrint>> cycleVector;
@@ -85,8 +83,8 @@ public:
     }
 
     void calculateForce(Body &body) {
-        Point2D firstPoint = this->getPoint();
-        Point2D secondPoint = body.getPoint();
+        Point2D firstPoint = this->point;
+        Point2D secondPoint = body.point;
 
         double denominator = pow(Point2D::mod(Point2D::subtractVectors(firstPoint, secondPoint)),3);
 
@@ -117,39 +115,11 @@ public:
     void calculateSpeed() {
         this->speed = Point2D::addVectors(this->speed, Point2D::scaleVector(DT, this->force));
     }
-
-    Point2D getPoint() {
-        Point2D point2D = this->point;
-        return point2D;
-    }
-
-
-    Point2D getForce(int index) {
-        Point2D point2D = forces[index];
-        return point2D;
-    }
-
-
-    void copyForceRevers(Body body) {
-        this->forces[body.number].copyRevers(body.getForce(this->number));
-    }
-
-    bool isNotNullForce(int index) {
-        if (forces[index].isNotNull) {
-            return true;
-        }
-        return false;
-    }
-
-    void plusStep() {
-        this->step++;
-    }
 };
 
 struct ThreadData {
     int start;
     int end;
-    int thread_num;
 };
 
 std::vector<Body> bodies;
@@ -185,8 +155,6 @@ void *ThreadFunction(void *arg) {
     auto *data = static_cast<ThreadData *>(arg);
     int start = data->start;
     int end = data->end;
-    int thread_num = data->thread_num;
-    std::cout << "Thread " << thread_num << " started" << std::endl;
 
     for (int j = 0; j < timeSteps; j++) {
         for (int i = start; i < end; i++) {
@@ -197,18 +165,17 @@ void *ThreadFunction(void *arg) {
                 }
             }
         }
-        std::cout << thread_num << " waiting forces" << std::endl;
+
         pthread_barrier_wait(&barrier_forces);
         for (int i = start; i < end; i++) {
             Body &partBody = bodies[i];
             partBody.calculateForceSum();
             partBody.calculatePosition();
             partBody.calculateSpeed();
-            partBody.plusStep();
-            cycleVector[i].emplace_back(partBody.point.x, partBody.point.y, partBody.speed.x, partBody.speed.y, partBody.force.x, partBody.force.y);
+            partBody.step++;
+            cycleVector[i].emplace_back(partBody.point.x, partBody.point.y, partBody.speed.x, partBody.speed.y);
         }
         pthread_barrier_wait(&barrier_calculate);
-        std::cout << thread_num  << " cycle " << j << " end" << std::endl;
     }
     pthread_barrier_wait(&barrier_thread);
     return NULL;
@@ -221,12 +188,10 @@ void writeOutput() {
             outputFile << "Cycle " << i + 1 << std::endl;
             for (int j = 0; j < bodiesCount; j++) {
                 outputFile << "Body " << j << " : " << cycleVector[j][i].x << "\t" << cycleVector[j][i].y << "\t"
-                           << cycleVector[j][i].Vx << "\t" << cycleVector[j][i].Vy << "\t" << cycleVector[j][i].sumFX << "\t" << cycleVector[j][i].sumFY << std::endl;
+                           << cycleVector[j][i].Vx << "\t" << cycleVector[j][i].Vy << std::endl;
             }
         }
         outputFile.close();
-
-        std::cout << "Created output" << std::endl;
     } else {
         std::cerr << "Error while writing output" << std::endl;
     }
@@ -248,15 +213,12 @@ int main(int argC, char *argV[]) {
 
             int start_index = 0;
 
-            std::cout << "Body   :     x              y           vx              vy   " << std::endl;
-
             for (int i = 0; i < num_threads_to_create; i++) {
 
                 int slice_size = i < bodiesCount % num_threads_to_create ? bodies_per_tread + 1 : bodies_per_tread;
                 int end_index = start_index + slice_size;
                 thread_data[i].start = start_index;
                 thread_data[i].end = end_index;
-                thread_data[i].thread_num = i;
                 start_index = end_index;
             }
 

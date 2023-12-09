@@ -39,7 +39,7 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "lab1::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-lab1-Debug-1a9792e657a5236e743d.json",
+					"jsonFile" : "target-lab1-Debug-b8bf83242106cd55d3b7.json",
 					"name" : "lab1",
 					"projectIndex" : 0
 				}
@@ -49,8 +49,8 @@
 	"kind" : "codemodel",
 	"paths" : 
 	{
-		"build" : "C:/Users/Maksim/CLionProjects/paral-labs/lab1/cmake-build-debug",
-		"source" : "C:/Users/Maksim/CLionProjects/paral-labs/lab1"
+		"build" : "D:/Programs/Parall-Labs/lab1/cmake-build-debug",
+		"source" : "D:/Programs/Parall-Labs/lab1"
 	},
 	"version" : 
 	{
