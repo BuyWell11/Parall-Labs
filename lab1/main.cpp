@@ -9,7 +9,7 @@
 
 #define DT 0.05
 #define E 1e-4
-#define THREAD_COUNT 8
+#define THREAD_COUNT 16
 
 pthread_barrier_t barrier_forces;
 pthread_barrier_t barrier_calculate;

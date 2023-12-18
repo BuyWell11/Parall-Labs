@@ -16,12 +16,129 @@ typedef struct {
 } GRID;
 
 
-void init_grid(GRID*);
-void read_matrix(GRID*, char*, float*, int);
-void print_matrix(GRID*, float*);
-void multiply_matrix(GRID*, float*, float*, float*);
-void multiply_matrix_linear(int, float*, float*, float*);
-void cannon(GRID*, float*, float*, float*);
+void multiply_matrix(GRID* grid, float* block_A, float* block_B, float* block_C) {
+	int i, j, k;
+        int sqroot = (int)sqrt(grid->nb_proc);
+
+    	for (i = 0; i < sqroot; i++)
+        	for (j = 0; j < sqroot; j++)
+            		for (k = 0; k < sqroot; k++)
+                		block_C[i * sqroot + j] += block_A[i * sqroot + k] * block_B[k * sqroot + j];
+}
+
+void multiply_matrix_linear(int size, float* block_A, float* block_B, float* block_C) {
+	int i, j, k;
+
+	for (i = 0; i < size; i++) {
+		for (j = 0; j < size; j++) {
+			for (k = 0; k < size; k++) {
+					block_C[i * size + j] += block_A[i * size + k] * block_B[k * size + j];
+			}
+		}
+	}
+}
+
+void cannon(GRID* grid, float* block_A, float* block_B, float* block_C) {
+	int sqroot = sqrt(grid->nb_proc);
+  	int shift_source, shift_dest;
+	MPI_Status status;
+	int up_rank, down_rank, left_rank, right_rank;
+	int i;
+
+	MPI_Cart_shift(grid->grid_comm, 1, -1, &right_rank, &left_rank); 
+	MPI_Cart_shift(grid->grid_comm, 0, -1, &down_rank, &up_rank); 
+	MPI_Cart_shift(grid->grid_comm, 1, -grid->pos_row, &shift_source, &shift_dest); 
+
+	MPI_Sendrecv_replace(block_A, sqroot*sqroot, MPI_FLOAT, shift_dest, 1, shift_source, 1, grid->grid_comm, &status); 
+
+	MPI_Cart_shift(grid->grid_comm, 0, -grid->pos_col, &shift_source, &shift_dest); 
+	MPI_Sendrecv_replace(block_B, sqroot*sqroot, MPI_FLOAT, shift_dest, 1, shift_source, 1, grid->grid_comm, &status); 
+   
+    for (i=0; i<sqroot; i++) 
+    { 
+        multiply_matrix(grid, block_A, block_B, block_C); 
+        MPI_Sendrecv_replace(block_A, grid->nb_proc, MPI_FLOAT, left_rank, 1, right_rank, 1, grid->grid_comm, &status); 
+        MPI_Sendrecv_replace(block_B, grid->nb_proc, MPI_FLOAT, up_rank, 1, down_rank, 1, grid->grid_comm, &status); 
+    } 
+   
+    MPI_Cart_shift(grid->grid_comm, 1, +grid->pos_row, &shift_source, &shift_dest); 
+    MPI_Sendrecv_replace(block_B, grid->nb_proc, MPI_FLOAT, shift_dest, 1, shift_source, 1, grid->grid_comm, &status); 
+
+    MPI_Cart_shift(grid->grid_comm, 0, +grid->pos_col, &shift_source, &shift_dest); 
+    MPI_Sendrecv_replace(block_B, grid->nb_proc, MPI_FLOAT, shift_dest, 1, shift_source, 1, grid->grid_comm, &status); 	
+}
+
+void print_matrix(GRID* grid, float* mat) {
+	if (grid->grid_rank == 0) {
+		printf("Matrix: \n");
+
+		int i, j;
+		for (i = 0; i < sqrt(grid->order); i++) {
+			for (j = 0; j < sqrt(grid->order); j++) {
+				if(log10((int)mat[i * grid->order + j]) + 1 <= 2) {
+					printf("%2d ", (int)mat[i * grid->order + j]);
+				} else if (log10((int)mat[i * grid->order + j]) + 1 > 2) {
+					printf("%4d ",(int)mat[i * grid->order + j]);
+				}
+			}
+			printf("\n");                                                                                                                       
+		}
+		printf("\n");                                                                                                                                       
+	}       
+}
+
+
+void init_grid(GRID* grid_info) {
+    int rank;
+    int dims[2];
+    int period[2];
+    int coords[2];
+    int free_coords[2];
+
+    MPI_Comm_size(MPI_COMM_WORLD, &(grid_info->nb_proc));
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    grid_info->order = grid_info->nb_proc;
+    dims[0] = dims[1] = (int) sqrt(grid_info->order);
+    period[0] = period[1] = 1;
+
+    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, period, 1, &(grid_info->grid_comm));
+    MPI_Comm_rank(grid_info->grid_comm, &(grid_info->grid_rank));
+    MPI_Cart_coords(grid_info->grid_comm, grid_info->grid_rank, 2, coords);
+
+    grid_info->pos_row = coords[0];
+    grid_info->pos_col = coords[1];
+
+    free_coords[0] = 0; 
+    free_coords[1] = 1;
+    MPI_Cart_sub(grid_info->grid_comm, free_coords, &(grid_info->row_comm));
+
+    free_coords[0] = 1; 
+    free_coords[1] = 0;
+    MPI_Cart_sub(grid_info->grid_comm, free_coords, &(grid_info->col_comm));
+} 
+
+
+void read_matrix(GRID* info, char* namefile, float* mat, int order) {
+	FILE* file = fopen(namefile, "r"); 
+
+	if(file == NULL) {
+		perror("invalid read");
+		exit(1);  
+	}
+
+	int col; 
+	int row;
+	for(row = 0; row < sqrt(order); ++row)
+	{
+		for(col = 0; col < sqrt(order); ++col)
+		{
+			fscanf(file, "%f", &mat[row * order + col]);
+		}
+	}
+
+	fclose(file);
+}
 
 
 int main(int argc, char** argv) {
@@ -146,130 +263,4 @@ int main(int argc, char** argv) {
     free(mat_C);
 	
 	return 0;
-}
-
-
-void cannon(GRID* grid, float* block_A, float* block_B, float* block_C) {
-	int sqroot = sqrt(grid->nb_proc);
-  	int shift_source, shift_dest;
-	MPI_Status status;
-	int up_rank, down_rank, left_rank, right_rank;
-	int i;
-
-	MPI_Cart_shift(grid->grid_comm, 1, -1, &right_rank, &left_rank); 
-	MPI_Cart_shift(grid->grid_comm, 0, -1, &down_rank, &up_rank); 
-	MPI_Cart_shift(grid->grid_comm, 1, -grid->pos_row, &shift_source, &shift_dest); 
-
-	MPI_Sendrecv_replace(block_A, sqroot*sqroot, MPI_FLOAT, shift_dest, 1, shift_source, 1, grid->grid_comm, &status); 
-
-	MPI_Cart_shift(grid->grid_comm, 0, -grid->pos_col, &shift_source, &shift_dest); 
-	MPI_Sendrecv_replace(block_B, sqroot*sqroot, MPI_FLOAT, shift_dest, 1, shift_source, 1, grid->grid_comm, &status); 
-   
-    for (i=0; i<sqroot; i++) 
-    { 
-        multiply_matrix(grid, block_A, block_B, block_C); 
-        MPI_Sendrecv_replace(block_A, grid->nb_proc, MPI_FLOAT, left_rank, 1, right_rank, 1, grid->grid_comm, &status); 
-        MPI_Sendrecv_replace(block_B, grid->nb_proc, MPI_FLOAT, up_rank, 1, down_rank, 1, grid->grid_comm, &status); 
-    } 
-   
-    MPI_Cart_shift(grid->grid_comm, 1, +grid->pos_row, &shift_source, &shift_dest); 
-    MPI_Sendrecv_replace(block_B, grid->nb_proc, MPI_FLOAT, shift_dest, 1, shift_source, 1, grid->grid_comm, &status); 
-
-    MPI_Cart_shift(grid->grid_comm, 0, +grid->pos_col, &shift_source, &shift_dest); 
-    MPI_Sendrecv_replace(block_B, grid->nb_proc, MPI_FLOAT, shift_dest, 1, shift_source, 1, grid->grid_comm, &status); 	
-}
-
-
-void multiply_matrix(GRID* grid, float* block_A, float* block_B, float* block_C) {
-	int i, j, k;
-        int sqroot = (int)sqrt(grid->nb_proc);
-
-    	for (i = 0; i < sqroot; i++)
-        	for (j = 0; j < sqroot; j++)
-            		for (k = 0; k < sqroot; k++)
-                		block_C[i * sqroot + j] += block_A[i * sqroot + k] * block_B[k * sqroot + j];
-}
-
-void multiply_matrix_linear(int size, float* block_A, float* block_B, float* block_C) {
-	int i, j, k;
-
-	for (i = 0; i < size; i++) {
-		for (j = 0; j < size; j++) {
-			for (k = 0; k < size; k++) {
-					block_C[i * size + j] += block_A[i * size + k] * block_B[k * size + j];
-			}
-		}
-	}
-}
-
-void print_matrix(GRID* grid, float* mat) {
-	if (grid->grid_rank == 0) {
-		printf("Matrix: \n");
-
-		int i, j;
-		for (i = 0; i < sqrt(grid->order); i++) {
-			for (j = 0; j < sqrt(grid->order); j++) {
-				if(log10((int)mat[i * grid->order + j]) + 1 <= 2) {
-					printf("%2d ", (int)mat[i * grid->order + j]);
-				} else if (log10((int)mat[i * grid->order + j]) + 1 > 2) {
-					printf("%4d ",(int)mat[i * grid->order + j]);
-				}
-			}
-			printf("\n");                                                                                                                       
-		}
-		printf("\n");                                                                                                                                       
-	}       
-}
-
-
-void init_grid(GRID* grid_info) {
-    int rank;
-    int dims[2];
-    int period[2];
-    int coords[2];
-    int free_coords[2];
-
-    MPI_Comm_size(MPI_COMM_WORLD, &(grid_info->nb_proc));
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-    grid_info->order = grid_info->nb_proc;
-    dims[0] = dims[1] = (int) sqrt(grid_info->order);
-    period[0] = period[1] = 1;
-
-    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, period, 1, &(grid_info->grid_comm));
-    MPI_Comm_rank(grid_info->grid_comm, &(grid_info->grid_rank));
-    MPI_Cart_coords(grid_info->grid_comm, grid_info->grid_rank, 2, coords);
-
-    grid_info->pos_row = coords[0];
-    grid_info->pos_col = coords[1];
-
-    free_coords[0] = 0; 
-    free_coords[1] = 1;
-    MPI_Cart_sub(grid_info->grid_comm, free_coords, &(grid_info->row_comm));
-
-    free_coords[0] = 1; 
-    free_coords[1] = 0;
-    MPI_Cart_sub(grid_info->grid_comm, free_coords, &(grid_info->col_comm));
-} 
-
-
-void read_matrix(GRID* info, char* namefile, float* mat, int order) {
-	FILE* file = fopen(namefile, "r"); 
-
-	if(file == NULL) {
-		perror("invalid read");
-		exit(1);  
-	}
-
-	int col; 
-	int row;
-	for(row = 0; row < sqrt(order); ++row)
-	{
-		for(col = 0; col < sqrt(order); ++col)
-		{
-			fscanf(file, "%f", &mat[row * order + col]);
-		}
-	}
-
-	fclose(file);
 }
