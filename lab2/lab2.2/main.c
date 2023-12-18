@@ -157,8 +157,6 @@ int main(int argc, char** argv) {
 	MPI_Init(&argc, &argv);
 	init_grid(&grid);
 
-	time1 = MPI_Wtime();
-
 	if(grid.grid_rank == 0) {
 		mat_A = (float*) malloc(grid.order*grid.order * sizeof(float));
 		mat_B = (float*) malloc(grid.order*grid.order * sizeof(float));
@@ -179,13 +177,16 @@ int main(int argc, char** argv) {
 
 	if(argc > 0) {
         if(strcasecmp(argv[1], "linear") == 0) {
+			time1 = MPI_Wtime();
             if(grid.grid_rank==0) {
 				printf("Linear computation\n \n");        
                 multiply_matrix_linear(grid.nb_proc, mat_A, mat_B, mat_C);
                 print_matrix(&grid, mat_C);
 			}
-			
+			time2 = MPI_Wtime();
+
 			MPI_Finalize();
+			printf("%f \n", time2-time1);
 			return 0;  
 		}
     }
@@ -227,7 +228,6 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	time2 = MPI_Wtime();
 
 	MPI_Scatterv(mat_A, send_counts, displs, type, block_A,grid.nb_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);	
 	MPI_Scatterv(mat_B, send_counts, displs, type, block_B,grid.nb_proc, MPI_FLOAT, 0, MPI_COMM_WORLD);                                              
@@ -240,18 +240,16 @@ int main(int argc, char** argv) {
 
 	cannon(&grid, block_A, block_B, block_C);
 
-	time4 = MPI_Wtime();
-
 	MPI_Gatherv(block_C, grid.nb_proc,  MPI_FLOAT, mat_C, send_counts, displs, type, 0, MPI_COMM_WORLD);
 
-	time5 = MPI_Wtime();
+	time4 = MPI_Wtime();
 
 	print_matrix(&grid, mat_A);
 	print_matrix(&grid, mat_B);
 	print_matrix(&grid, mat_C);
 
 	if(grid.grid_rank == 0) {
-		printf("%f, %f, %f, %f, %f \n", time5-time4, time4-time3, time3-time2, time2-time1, time5-time1 );
+		printf("%f \n", time4-time3);
 	}
 
 	MPI_Finalize();
